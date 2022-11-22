@@ -9,11 +9,12 @@ import (
 func main() {
 	app := fiber.New()
 
+	Database()
+	Migrate()
+	seed(db)
 	app.Get("/", func(c *fiber.Ctx) error {
 		return c.JSON("Hello! World")
 	})
-
-	Database()
 
 	app.Post("/login", Login)
 	task := app.Group("task")

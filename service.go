@@ -5,6 +5,7 @@ import (
 
 	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v2"
+	"golang.org/x/crypto/bcrypt"
 )
 
 var db = DB
@@ -60,6 +61,7 @@ func ValidateTask(task TaskRequest) []*ErrorResponse {
 }
 
 func CreateTask(c *fiber.Ctx) error {
+	dbs := DB
 	task := new(TaskRequest)
 
 	if err := c.BodyParser(task); err != nil {
@@ -74,18 +76,19 @@ func CreateTask(c *fiber.Ctx) error {
 
 	}
 
-	taskData := TaskRequest{
+	taskData := Task{
 		Name:        task.Name,
 		Description: task.Description,
 	}
 
-	db.Create(&taskData)
+	dbs.Create(&taskData)
 
 	return c.Status(fiber.StatusOK).JSON(&fiber.Map{"task": taskData, "message": "Task Created Successfully"})
 
 }
 
 func UpdateTask(c *fiber.Ctx) error {
+	dbs := DB
 	idstring := c.Params("id")
 	id, _ := strconv.Atoi(idstring)
 	task := new(TaskRequest)
@@ -107,20 +110,23 @@ func UpdateTask(c *fiber.Ctx) error {
 		"description": task.Description,
 	}
 
-	db.Model(&Task{}).Where("id = ?", id).Updates(&taskData)
+	dbs.Model(&Task{}).Where("id = ?", id).Updates(&taskData)
 
 	return c.Status(fiber.StatusOK).JSON(&fiber.Map{"status": true, "task": taskData, "message": "Task Updated Successfully"})
 
 }
 
 func DeleteTask(c *fiber.Ctx) error {
+	dbs := DB
 	idstring := c.Params("id")
 	id, _ := strconv.Atoi(idstring)
-	db.Where("id = ?", id).Delete(&Task{})
+	dbs.Where("id = ?", id).Delete(&Task{})
 	return c.Status(fiber.StatusOK).JSON(&fiber.Map{"status": true, "message": "Task Deleted Successfully"})
 }
 
 func Login(c *fiber.Ctx) error {
+	model := new(User)
+	dbs := DB
 	user := new(UserRequest)
 	if err := c.BodyParser(user); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(&fiber.Map{
@@ -131,19 +137,42 @@ func Login(c *fiber.Ctx) error {
 	errors := ValidateStruct(*user)
 	if errors != nil {
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(errors)
-
 	}
 
-	result := db.Where("email = ? AND password = ?", user.Email, user.Password).First(&user)
+	result := dbs.Where("email = ?", user.Email).First(&model)
 
 	if result.Error != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(&fiber.Map{
-			"error":  result.Error,
+			"error":  result.Error.Error(),
 			"status": false})
 	}
 
-	return c.Status(fiber.StatusOK).JSON(&fiber.Map{
-		"status": true,
-		"user":   user,
-	})
+	status, msg := VerifyPassword(model.Password, user.Password)
+
+	if status {
+		return c.Status(fiber.StatusOK).JSON(&fiber.Map{
+			"status":  true,
+			"message": "User logged in Successfully",
+			"user":    user.Email,
+		})
+	} else {
+		return c.Status(fiber.StatusUnauthorized).JSON(&fiber.Map{
+			"status":  false,
+			"message": msg,
+		})
+	}
+
+}
+
+func VerifyPassword(userPassword string, providedPassword string) (bool, string) {
+	err := bcrypt.CompareHashAndPassword([]byte(userPassword), []byte(providedPassword))
+	check := true
+	msg := ""
+
+	if err != nil {
+		msg = "Password is incorrect"
+		check = false
+	}
+
+	return check, msg
 }
