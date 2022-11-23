@@ -12,6 +12,7 @@ func main() {
 	Database()
 	Migrate()
 	seed(db)
+
 	app.Get("/", func(c *fiber.Ctx) error {
 		return c.JSON("Hello! World")
 	})

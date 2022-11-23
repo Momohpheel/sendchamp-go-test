@@ -1,10 +1,13 @@
 package main
 
 import (
+	"encoding/json"
+	"fmt"
 	"strconv"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v2"
+	"github.com/streadway/amqp"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -81,9 +84,61 @@ func CreateTask(c *fiber.Ctx) error {
 		Description: task.Description,
 	}
 
+	// taskData := map[string]interface{}{
+	// 	"name":        task.Name,
+	// 	"description": task.Description,
+	// }
+
+	jsonReq, _ := json.Marshal(taskData)
+	conn, err := amqp.Dial("amqp://guest:guest@localhost:5672/")
+	if err != nil {
+		fmt.Println(err)
+		panic(err)
+	}
+
+	defer conn.Close()
+	ch, err := conn.Channel()
+	if err != nil {
+		panic(err)
+	}
+
+	defer ch.Close()
+
+	q, err := ch.QueueDeclare(
+		"Task",
+		false,
+		false,
+		false,
+		false,
+		nil,
+	)
+
+	if err != nil {
+		fmt.Println(err)
+		panic(err)
+	}
+	fmt.Println(q)
+
+	err = ch.Publish(
+		"",
+		"Task",
+		false,
+		false,
+		amqp.Publishing{
+			ContentType: "text/plain",
+			Body:        []byte(jsonReq),
+		},
+	)
+
+	if err != nil {
+		fmt.Println(err)
+		panic(err)
+	}
+
+	fmt.Println("Success Publishing Message to Queue")
 	dbs.Create(&taskData)
 
-	return c.Status(fiber.StatusOK).JSON(&fiber.Map{"task": taskData, "message": "Task Created Successfully"})
+	return c.Status(fiber.StatusOK).JSON(&fiber.Map{"status": true, "task": taskData, "message": "Task Created Successfully"})
 
 }
 
